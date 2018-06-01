@@ -1,6 +1,6 @@
 # coding=utf-8
-# Author: Giovanni Borri
-# Modified by gborri, https://github.com/gborri for TNTVillage
+# Author: Danilo Daloiso
+# Modified by Danny89530
 # URL: https://sickrage.github.io
 #
 # This file is part of SickRage.
@@ -28,34 +28,7 @@ from sickbeard.bs4_parser import BS4Parser
 from sickbeard.common import Quality
 from sickbeard.name_parser.parser import InvalidNameException, InvalidShowException, NameParser
 from sickrage.helper.common import convert_size, try_int
-from sickrage.helper.exceptions import AuthException
 from sickrage.providers.torrent.TorrentProvider import TorrentProvider
-
-category_excluded = {'Sport': 22,
-                     'Teatro': 23,
-                     'Video Musicali': 21,
-                     'Film': 4,
-                     'Musica': 2,
-                     'Students Releases': 13,
-                     'E Books': 3,
-                     'Linux': 6,
-                     'Macintosh': 9,
-                     'Windows Software': 10,
-                     'Pc Game': 11,
-                     'Playstation 2': 12,
-                     'Wrestling': 24,
-                     'Varie': 25,
-                     'Xbox': 26,
-                     'Immagini sfondi': 27,
-                     'Altri Giochi': 28,
-                     'Fumetteria': 30,
-                     'Trash': 31,
-                     'PlayStation 1': 32,
-                     'PSP Portable': 33,
-                     'A Book': 34,
-                     'Podcast': 35,
-                     'Edicola': 36,
-                     'Mobile': 37}
 
 
 class TNTVillageProvider(TorrentProvider):  # pylint: disable=too-many-instance-attributes
@@ -66,27 +39,12 @@ class TNTVillageProvider(TorrentProvider):  # pylint: disable=too-many-instance-
 
         self._uid = None
         self._hash = None
-        self.username = None
-        self.password = None
         self.cat = None
         self.engrelease = None
-        self.page = 10
+        self.page = 1
         self.subtitle = None
         self.minseed = None
         self.minleech = None
-
-        self.hdtext = [' - Versione 720p',
-                       ' Versione 720p',
-                       ' V 720p',
-                       ' V 720',
-                       ' V HEVC',
-                       ' V  HEVC',
-                       ' V 1080',
-                       ' Versione 1080p',
-                       ' 720p HEVC',
-                       ' Ver 720',
-                       ' 720p HEVC',
-                       ' 720p']
 
         self.category_dict = {'Serie TV': 29,
                               'Cartoni': 8,
@@ -96,10 +54,7 @@ class TNTVillageProvider(TorrentProvider):  # pylint: disable=too-many-instance-
                               'All': 0}
 
         self.urls = {'base_url': 'http://forum.tntvillage.scambioetico.org',
-                     'login': 'http://forum.tntvillage.scambioetico.org/index.php?act=Login&CODE=01',
-                     'detail': 'http://forum.tntvillage.scambioetico.org/index.php?showtopic=%s',
-                     'search': 'http://forum.tntvillage.scambioetico.org/?act=allreleases&%s',
-                     'search_page': 'http://forum.tntvillage.scambioetico.org/?act=allreleases&st={0}&{1}',
+                     'search_page': 'http://tntvillage.scambioetico.org/src/releaselist.php',
                      'download': 'http://forum.tntvillage.scambioetico.org/index.php?act=Attach&type=post&id=%s'}
 
         self.url = self.urls['base_url']
@@ -111,34 +66,6 @@ class TNTVillageProvider(TorrentProvider):  # pylint: disable=too-many-instance-
         self.categories = "cat=29"
 
         self.cache = tvcache.TVCache(self, min_time=30)  # only poll TNTVillage every 30 minutes max
-
-    def _check_auth(self):
-
-        if not self.username or not self.password:
-            raise AuthException("Your authentication credentials for " + self.name + " are missing, check your config.")
-
-        return True
-
-    def login(self):
-        if len(self.session.cookies) >= 3:
-            if self.session.cookies.get('pass_hash', '') not in ('0', 0) and self.session.cookies.get('member_id') not in ('0', 0):
-                return True
-
-        login_params = {'UserName': self.username,
-                        'PassWord': self.password,
-                        'CookieDate': 1,
-                        'submit': 'Connettiti al Forum'}
-
-        response = self.get_url(self.urls['login'], post_data=login_params, returns='text')
-        if not response:
-            logger.log("Unable to connect to provider", logger.WARNING)
-            return False
-
-        if re.search('Sono stati riscontrati i seguenti errori', response) or re.search('<title>Connettiti</title>', response):
-            logger.log("Invalid username or password. Check your settings", logger.WARNING)
-            return False
-
-        return True
 
     @staticmethod
     def _reverseQuality(quality):
@@ -167,37 +94,19 @@ class TNTVillageProvider(TorrentProvider):  # pylint: disable=too-many-instance-
         return quality_string
 
     @staticmethod
-    def _episodeQuality(torrent_rows):  # pylint: disable=too-many-return-statements, too-many-branches
+    def _episodeQuality(quality_string):  # pylint: disable=too-many-return-statements, too-many-branches
         """
             Return The quality from the scene episode HTML row.
         """
-        file_quality = ''
-
-        img_all = (torrent_rows('td'))[1]('img')
-
-        if img_all:
-            for img_type in img_all:
-                try:
-                    file_quality = file_quality + " " + img_type['src'].replace("style_images/mkportal-636/", "").replace(".gif", "").replace(".png", "")
-                except Exception:
-                    logger.log("Failed parsing quality. Traceback: {0}".format(traceback.format_exc()), logger.ERROR)
-
-        else:
-            file_quality = (torrent_rows('td'))[1].get_text()
-            logger.log("Episode quality: {0}".format(file_quality), logger.DEBUG)
 
         def checkName(options, func):
-            return func([re.search(option, file_quality, re.I) for option in options])
+            return func([re.search(option, quality_string, re.I) for option in options])
 
         dvdOptions = checkName(["dvd", "dvdrip", "dvdmux", "DVD9", "DVD5"], any)
         bluRayOptions = checkName(["BD", "BDmux", "BDrip", "BRrip", "Bluray"], any)
         sdOptions = checkName(["h264", "divx", "XviD", "tv", "TVrip", "SATRip", "DTTrip", "Mpeg2"], any)
         hdOptions = checkName(["720p"], any)
         fullHD = checkName(["1080p", "fullHD"], any)
-
-        if img_all:
-            file_quality = (torrent_rows('td'))[1].get_text()
-
         webdl = checkName(["webdl", "webmux", "webrip", "dl-webmux", "web-dlmux", "webdl-mux", "web-dl", "webdlmux", "dlmux"], any)
 
         if sdOptions and not dvdOptions and not fullHD and not hdOptions:
@@ -219,40 +128,44 @@ class TNTVillageProvider(TorrentProvider):  # pylint: disable=too-many-instance-
         else:
             return Quality.UNKNOWN
 
-    def _is_italian(self, torrent_rows):
+    def _is_italian(self, torrent_title, extra_info):
 
-        name = str(torrent_rows('td')[1].find('b').find('span'))
-        if not name or name == 'None':
+        if not torrent_title or torrent_title == 'None':
+            return False
+
+        if not extra_info or extra_info == 'None':
             return False
 
         subFound = italian = False
         for sub in self.sub_string:
-            if re.search(sub, name, re.I):
+            if re.search(sub, extra_info, re.I):
                 subFound = True
             else:
                 continue
 
-            if re.search("[ -_.|]ita[ -_.|]", name.lower().split(sub)[0], re.I):
-                logger.log("Found Italian release:  " + name, logger.DEBUG)
+            if re.search("[ -_.|]ita[ -_.|]", extra_info.lower().split(sub)[0], re.I):
+                logger.log("Found Italian release: '%s'" % torrent_title, logger.DEBUG)
                 italian = True
                 break
 
-        if not subFound and re.search("ita", name, re.I):
-            logger.log("Found Italian release:  " + name, logger.DEBUG)
+        if not subFound and re.search("ita", extra_info, re.I):
+            logger.log("Found Italian release: '%s'" % torrent_title, logger.DEBUG)
             italian = True
 
         return italian
 
     @staticmethod
-    def _is_english(torrent_rows):
+    def _is_english(torrent_title, extra_info):
 
-        name = str(torrent_rows('td')[1].find('b').find('span'))
-        if not name or name == 'None':
+        if not torrent_title or torrent_title == 'None':
+            return False
+
+        if not extra_info or extra_info == 'None':
             return False
 
         english = False
-        if re.search("eng", name, re.I):
-            logger.log("Found English release:  " + name, logger.DEBUG)
+        if re.search("eng", extra_info, re.I):
+            logger.log("Found English release:  " + torrent_title, logger.DEBUG)
             english = True
 
         return english
@@ -274,90 +187,92 @@ class TNTVillageProvider(TorrentProvider):  # pylint: disable=too-many-instance-
 
     def search(self, search_params, age=0, ep_obj=None):  # pylint: disable=too-many-locals, too-many-branches, too-many-statements
         results = []
-        if not self.login():
-            return results
-
-        self.categories = "cat=" + str(self.cat)
 
         for mode in search_params:
             items = []
             logger.log("Search Mode: {0}".format(mode), logger.DEBUG)
+
             for search_string in search_params[mode]:
-
-                if mode == 'RSS':
-                    self.page = 2
-
-                last_page = 0
-                y = int(self.page)
 
                 if search_string == '':
                     continue
 
                 search_string = str(search_string).replace('.', ' ')
 
-                for x in range(0, y):
-                    z = x * 20
-                    if last_page:
-                        break
+                logger.log("Search string: {0}".format
+                           (search_string.decode("utf-8")), logger.DEBUG)
 
-                    if mode != 'RSS':
-                        search_url = (self.urls['search_page'] + '&filter={2}').format(z, self.categories, search_string)
-                    else:
-                        search_url = self.urls['search_page'].format(z, self.categories)
+                params = {'srcrel': search_string,
+                          'cat': str(self.cat),
+                          'page': str(self.page)}
 
-                    if mode != 'RSS':
-                        logger.log("Search string: {0}".format
-                                   (search_string.decode("utf-8")), logger.DEBUG)
+                data = self.get_url(self.urls['search_page'],
+                                    post_data=params,
+                                    returns='text')
 
-                    data = self.get_url(search_url, returns='text')
-                    if not data:
-                        logger.log("No data returned from provider", logger.DEBUG)
+                if not data:
+                    logger.log("No data returned from provider", logger.DEBUG)
+                    continue
+
+                try:
+                    with BS4Parser(data, 'html5lib') as html:
+                        last_page = int(html.find('div', class_='pagination')('li')[-1].attrs['p'])
+
+                    if last_page == 0:
+                        logger.log("Data returned from provider does not contain any torrents", logger.DEBUG)
                         continue
 
-                    try:
-                        with BS4Parser(data, 'html5lib') as html:
-                            torrent_table = html.find('table', class_='copyright')
-                            torrent_rows = torrent_table('tr') if torrent_table else []
+                    for page in range(self.page, last_page + 1):
 
-                            # Continue only if one Release is found
-                            if len(torrent_rows) < 3:
-                                logger.log("Data returned from provider does not contain any torrents", logger.DEBUG)
-                                last_page = 1
+                        if page != 1:
+                            params = {'srcrel': search_string,
+                                      'cat': str(self.cat),
+                                      'page': str(page)}
+
+                            data = self.get_url(self.urls['search_page'],
+                                                post_data=params,
+                                                returns='text')
+
+                            if not data:
+                                logger.log("No data returned from provider", logger.DEBUG)
                                 continue
 
-                            if len(torrent_rows) < 42:
-                                last_page = 1
+                        with BS4Parser(data, 'html5lib') as html:
+                            torrent_table = html.find('div', class_='showrelease_tb')
+                            torrent_rows = torrent_table('tr') if torrent_table else []
 
-                            for result in torrent_table('tr')[2:]:
+                            logger.log("Inspecting page {0} of {1}. {2} Torrents found on this page".format(page, last_page, len(torrent_rows) - 1), logger.DEBUG)
+
+                            # Continue only if one Release is found
+                            if len(torrent_rows) < 2:
+                                logger.log("Data returned from provider does not contain any torrents", logger.DEBUG)
+                                continue
+
+                            for result in torrent_table('tr')[1:]:
 
                                 try:
-                                    link = result.find('td').find('a')
-                                    title = link.string
-                                    download_url = self.urls['download'] % result('td')[8].find('a')['href'][-8:]
-                                    leechers = result('td')[3]('td')[0].text
-                                    leechers = int(leechers.strip('[]'))
-                                    seeders = result('td')[3]('td')[1].text
-                                    seeders = int(seeders.strip('[]'))
-                                    torrent_size = result('td')[3]('td')[3].text.strip('[]') + " GB"
-                                    size = convert_size(torrent_size) or -1
+                                    # link = result('td')[6].find('a')['href']
+                                    title = result('td')[6].text.replace(u'\xa0', u' ').replace('.', ' ')
+                                    download_url = self.urls['download'] % result('td')[0].find('a')['href'][-8:]
+                                    leechers = int(result('td')[3].text)
+                                    seeders = int(result('td')[4].text)
+                                    # torrent_size = result('td')[3]('td')[3].text.strip('[]') + " GB"
+                                    # size = convert_size(torrent_size) or -1
+                                    size = -1
                                 except (AttributeError, TypeError):
                                     continue
 
-                                filename_qt = self._reverseQuality(self._episodeQuality(result))
-                                for text in self.hdtext:
-                                    title1 = title
-                                    title = title.replace(text, filename_qt)
-                                    if title != title1:
-                                        break
+                                torrent_info = re.split(r'(\[.*?\])', title)[1]
+                                filename_qt = self._reverseQuality(self._episodeQuality(torrent_info))
 
                                 if Quality.nameQuality(title) == Quality.UNKNOWN:
                                     title += filename_qt
 
-                                if not self._is_italian(result) and not self.subtitle:
+                                if not self._is_italian(title, torrent_info) and not self.subtitle:
                                     logger.log("Torrent is subtitled, skipping: {0} ".format(title), logger.DEBUG)
                                     continue
 
-                                if self.engrelease and not self._is_english(result):
+                                if self.engrelease and not self._is_english(tile, torrent_info):
                                     logger.log("Torrent isnt english audio/subtitled , skipping: {0} ".format(title), logger.DEBUG)
                                     continue
 
@@ -366,15 +281,15 @@ class TNTVillageProvider(TorrentProvider):  # pylint: disable=too-many-instance-
                                 rindex = re.search(r'([Ss][\d{1,2}]+)', title)
                                 if rindex:
                                     show_title = title[:rindex.start()]
-                                    ep_params = title[rindex.start():]
-                                if show_title.lower() != search_show.lower() and search_show.lower() in show_title.lower():
-                                    new_title = search_show + ep_params
+                                    ep_params = title[rindex.start():].decode("utf-8").split(' ')[0].upper()
+                                # if show_title.lower() != search_show.lower() and search_show.lower() in show_title.lower():
+                                    new_title = search_show + ep_params + filename_qt
                                     title = new_title
 
                                 if not all([title, download_url]):
                                     continue
 
-                                if self._is_season_pack(title):
+                                if self._is_season_pack(title.replace(filename_qt, '')):
                                     title = re.sub(r'([Ee][\d{1,2}\-?]+)', '', title)
 
                                 # Filter unseeded torrent
@@ -390,8 +305,8 @@ class TNTVillageProvider(TorrentProvider):  # pylint: disable=too-many-instance-
 
                                 items.append(item)
 
-                    except Exception:
-                        logger.log("Failed parsing provider. Traceback: {0}".format(traceback.format_exc()), logger.ERROR)
+                except Exception:
+                    logger.log("Failed parsing provider for getPage. Traceback: {0}".format(traceback.format_exc()), logger.ERROR)
 
                 # For each search mode sort all the items by seeders if available if available
                 items.sort(key=lambda d: try_int(d.get('seeders', 0)), reverse=True)
