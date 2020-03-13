@@ -109,7 +109,7 @@ jobs:
         echo ::set-output name=docker_image::$(echo docker.io/$GITHUB_REPOSITORY | tr '[:upper:]' '[:lower:]')
         echo ::set-output name=version::${GITHUB_REF#refs/*/}
         echo ::set-output name=docker_root::$(docker info 2>/dev/null | grep -e "Docker Root Dir" | tail -c+19)
-        echo ::set-output name=docker_cache::docker.io/miigotu/sickchill-cache:${{ steps.prepare.outputs.version }}
+        echo ::set-output name=docker_cache::docker.io/miigotu/sickchill-cache
     - name: Restore docker cache
       uses: actions/cache@v1
       with:
@@ -126,8 +126,8 @@ jobs:
         echo "${DOCKER_PASSWORD}" | docker login --username "${{ steps.prepare.outputs.docker_username }}" --password-stdin docker.io
         echo ::set-output name=buildx::$(echo docker buildx build --output type=image,name=${{ steps.prepare.outputs.docker_image }},push=true \
           --platform ${{ steps.prepare.outputs.docker_platforms }} \
-          --cache-to "type=registry,ref=${{ steps.prepare.outputs.docker_cache }}" \
-          --cache-from "type=registry,ref=${{ steps.prepare.outputs.docker_cache }},mode=max" \
+          --cache-to "type=registry,ref=${{ steps.prepare.outputs.docker_cache }}:${{ steps.prepare.outputs.version }}" \
+          --cache-from "type=registry,ref=${{ steps.prepare.outputs.docker_cache }}:${{ steps.prepare.outputs.version }},mode=max" \
           --tag "${{ steps.prepare.outputs.docker_image }}:${{ steps.prepare.outputs.version }}")
 
     - name: Run Buildx (master)
